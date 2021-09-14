@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<item>
+    <version>2.0.0.0</version>
+    <url>https://www.mediafire.com/file/hsx63nlio6suoxr/ReleaseX.rar/file</url>
+    <changelog>https://github.com/ravibpatel/AutoUpdater.NET/releases</changelog>
+    <mandatory>true</mandatory>
+    <mandatory mode="2">true</mandatory>
+</item>

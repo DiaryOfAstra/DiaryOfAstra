@@ -6,6 +6,10 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
+if game.PlaceId == 91797414023830 then
+    return -- Stop execution if PlaceId matches
+end
+
 -- Shortcuts
 local player = Players.LocalPlayer
 local dataRemote = ReplicatedStorage:WaitForChild("Bridgenet2Main"):WaitForChild("dataRemoteEvent")
@@ -21,12 +25,21 @@ local isScriptActive = true
 local bossSpawned = false
 local connectionEstablished = false
 
--- Mobile touch simulation (for cross-platform support)
+-- Mobile touch simulation with extended duration
 local function simulateTap(x, y)
     if PLATFORM == "Mobile" then
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
-        task.wait(0.05)
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+        local startTime = os.clock()
+        local TAP_DURATION = 15  -- 15 seconds of continuous tapping
+        
+        while os.clock() - startTime < TAP_DURATION and isScriptActive do
+            -- Send press and release events with realistic timing
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            task.wait(math.random(0.03, 0.07))  -- Randomize press duration
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+            
+            -- Add random delay between taps for human-like pattern
+            task.wait(math.random(0.1, 0.3))
+        end
     end
 end
 

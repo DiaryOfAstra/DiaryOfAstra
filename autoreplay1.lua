@@ -5,6 +5,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 if game.PlaceId == 91797414023830 then
     return -- Stop execution if PlaceId matches
@@ -16,26 +17,37 @@ local dataRemote = ReplicatedStorage:WaitForChild("Bridgenet2Main"):WaitForChild
 
 -- Config
 local BOSS_PREFIX = { "Eto_", "Tatara_", "Noro_", "Kuzen_" }
-local AUTO_CLICK_ATTEMPTS = 5
+local AUTO_CLICK_ATTEMPTS = 10  -- Increased from 5 to 10
 local SPAM_DURATION = 20
-local PLATFORM = game:GetService("UserInputService").TouchEnabled and "Mobile" or "Desktop"
+local PLATFORM = UserInputService.TouchEnabled and "Mobile" or "Desktop"
+local DEBUG_MODE = true  -- Enable debug output
 
 -- State
 local isScriptActive = true
 local bossSpawned = false
 local connectionEstablished = false
 
+-- Debug printing function
+local function debug(msg)
+    if DEBUG_MODE then
+        print("[AUTO-BOSS] " .. msg)
+    end
+end
+
+debug("Script started - Platform: " .. PLATFORM)
+
 -- Mobile touch simulation with extended duration
 local function simulateTap(x, y)
     if PLATFORM == "Mobile" then
+        debug("Simulating mobile tap at " .. x .. ", " .. y)
         local startTime = os.clock()
         local TAP_DURATION = 15  -- 15 seconds of continuous tapping
         
         while os.clock() - startTime < TAP_DURATION and isScriptActive do
             -- Send press and release events with realistic timing
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(x, y), true)
             task.wait(math.random(0.03, 0.07))  -- Randomize press duration
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(x, y), false)
             
             -- Add random delay between taps for human-like pattern
             task.wait(math.random(0.1, 0.3))
@@ -45,14 +57,31 @@ end
 
 -- Enhanced auto-click with mobile support
 local function autoClickReplay()
+    debug("Attempting to click replay button...")
+    
     local playerGui = player:WaitForChild("PlayerGui")
-    local VoteGui = playerGui:FindFirstChild("Vote") or playerGui:WaitForChild("Vote", 10)
-    if not VoteGui then return end
+    local VoteGui = playerGui:FindFirstChild("Vote")
+    
+    if not VoteGui then
+        debug("Vote GUI not found, waiting up to 10 seconds...")
+        VoteGui = playerGui:WaitForChild("Vote", 10)
+        if not VoteGui then 
+            debug("Vote GUI still not found after waiting")
+            return 
+        end
+    end
 
+    debug("Vote GUI found")
+    
     local replayButton = VoteGui.Frame.CosmeticInterface:FindFirstChild("Replay")
-    if not replayButton then return end
-
-    -- Visual selection
+    if not replayButton then
+        debug("Replay button not found in Vote GUI")
+        return
+    end
+    
+    debug("Replay button found")
+    
+    -- Visual selection (works on Desktop)
     GuiService.SelectedObject = replayButton
     
     -- Get click position accounting for platform differences
@@ -60,29 +89,93 @@ local function autoClickReplay()
     local posX = replayButton.AbsolutePosition.X + replayButton.AbsoluteSize.X/2 + inset.X
     local posY = replayButton.AbsolutePosition.Y + replayButton.AbsoluteSize.Y/2 + inset.Y
     
+    debug("Clicking at position: " .. posX .. ", " .. posY)
+    
+    -- Multiple attempts to ensure button click
     for i = 1, AUTO_CLICK_ATTEMPTS do
-        if not replayButton:IsDescendantOf(game) then break end
+        if not replayButton:IsDescendantOf(game) then 
+            debug("Replay button no longer exists, breaking loop")
+            break 
+        end
         
-        -- Cross-platform input
+        -- Platform-specific input methods
         if PLATFORM == "Desktop" then
+            debug("Desktop click attempt " .. i)
             VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, true, game, 1)
             task.wait(0.05)
             VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, false, game, 1)
         else
-            simulateTap(posX, posY)
+            debug("Mobile tap attempt " .. i)
+            -- For mobile, use TouchEvent instead of MouseButtonEvent
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(posX, posY), true)
+            task.wait(0.05)
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(posX, posY), false)
+            
+            -- Add a slight delay then try again with slightly different coordinates
+            task.wait(0.1)
+            local offsetX = posX + math.random(-5, 5)
+            local offsetY = posY + math.random(-5, 5)
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(offsetX, offsetY), true)
+            task.wait(0.05)
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(offsetX, offsetY), false)
         end
         
-        -- Direct signal activation
-        if replayButton:FindFirstChild("Activated") then
-            firesignal(replayButton.Activated)
+        -- Alternative method: Direct signal activation (works on both platforms)
+        debug("Attempting to fire Activated signal directly")
+        if replayButton.ClassName == "TextButton" or replayButton.ClassName == "ImageButton" then
+            pcall(function()
+                firesignal(replayButton.Activated)
+                debug("Direct signal fired")
+            end)
+            
+            -- Additional attempt: MouseButton1Click signal
+            pcall(function()
+                firesignal(replayButton.MouseButton1Click)
+                debug("MouseButton1Click signal fired")
+            end)
         end
         
-        task.wait(0.2)
+        -- Short delay between attempts
+        task.wait(0.3)
+    end
+    
+    debug("Finished replay button click attempts")
+    
+    -- Final attempt: Scan for any button with "Replay" text
+    debug("Scanning for any button with 'Replay' text...")
+    for _, gui in pairs(playerGui:GetDescendants()) do
+        if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and 
+           ((gui.Text and gui.Text:lower():find("replay")) or 
+            (gui.Name:lower():find("replay"))) then
+            
+            debug("Found alternative replay button: " .. gui:GetFullName())
+            
+            -- Get position
+            local altPosX = gui.AbsolutePosition.X + gui.AbsoluteSize.X/2 + inset.X
+            local altPosY = gui.AbsolutePosition.Y + gui.AbsoluteSize.Y/2 + inset.Y
+            
+            -- Click
+            if PLATFORM == "Desktop" then
+                VirtualInputManager:SendMouseButtonEvent(altPosX, altPosY, 0, true, game, 1)
+                task.wait(0.05)
+                VirtualInputManager:SendMouseButtonEvent(altPosX, altPosY, 0, false, game, 1)
+            else
+                VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(altPosX, altPosY), true)
+                task.wait(0.05)
+                VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(altPosX, altPosY), false)
+            end
+            
+            -- Fire signals
+            pcall(function() firesignal(gui.Activated) end)
+            pcall(function() firesignal(gui.MouseButton1Click) end)
+            break
+        end
     end
 end
 
 -- Space spam function with mobile support
 local function spamSpace()
+    debug("Starting space/touch spam for " .. SPAM_DURATION .. " seconds")
     local startTime = os.time()
     while os.time() - startTime < SPAM_DURATION and isScriptActive do
         if PLATFORM == "Desktop" then
@@ -91,10 +184,17 @@ local function spamSpace()
             VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
         else
             -- For mobile, simulate tap in center screen
-            simulateTap(0.5, 0.5)
+            local viewportSize = workspace.CurrentCamera.ViewportSize
+            local centerX = viewportSize.X / 2
+            local centerY = viewportSize.Y / 2
+            
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(centerX, centerY), true)
+            task.wait(0.1)
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(centerX, centerY), false)
         end
         task.wait(0.5)
     end
+    debug("Space/touch spam completed")
 end
 
 -- Boss detection system

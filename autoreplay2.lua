@@ -13,7 +13,7 @@ local dataRemote = ReplicatedStorage:WaitForChild("Bridgenet2Main"):WaitForChild
 -- Config
 local BOSS_PREFIX = { "Eto_", "Tatara_", "Noro_", "Kuzen_" }
 local AUTO_CLICK_ATTEMPTS = 5
-local SPAM_DURATION = 10
+local SPAM_DURATION = 20
 local PLATFORM = game:GetService("UserInputService").TouchEnabled and "Mobile" or "Desktop"
 
 -- State

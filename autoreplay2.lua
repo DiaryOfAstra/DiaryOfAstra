@@ -56,28 +56,66 @@ local function simulateTap(x, y)
 end
 
 -- Enhanced auto-click with platform-specific implementations
+-- Enhanced auto-click with better GUI detection and clicking methods
 local function autoClickReplay()
     debug("Attempting to click replay button...")
     
+    -- Wait for game to properly load post-boss death
+    task.wait(3)
+    
     local playerGui = player:WaitForChild("PlayerGui")
-    local VoteGui = playerGui:FindFirstChild("Vote")
+    
+    -- First, check if the Vote GUI exists using a more robust method
+    local VoteGui
+    for i = 1, 5 do  -- Try up to 5 times with increasing delays
+        VoteGui = playerGui:FindFirstChild("Vote")
+        if VoteGui then
+            debug("Vote GUI found on attempt " .. i)
+            break
+        end
+        debug("Vote GUI not found, waiting...")
+        task.wait(i)  -- Progressive waiting (1s, 2s, 3s...)
+    end
     
     if not VoteGui then
-        debug("Vote GUI not found, waiting up to 10 seconds...")
-        VoteGui = playerGui:WaitForChild("Vote", 10)
-        if not VoteGui then 
-            debug("Vote GUI still not found after waiting")
-            return 
+        debug("Vote GUI not found after multiple attempts, searching all GUIs...")
+        -- Broader search for any GUI with replay button
+        for _, gui in ipairs(playerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                -- Deep search for replay button in this GUI
+                for _, obj in pairs(gui:GetDescendants()) do
+                    if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and 
+                       ((obj.Text and string.lower(obj.Text):find("replay")) or 
+                        string.lower(obj.Name):find("replay")) then
+                        debug("Found replay button in alternate GUI: " .. gui.Name)
+                        VoteGui = gui
+                        break
+                    end
+                end
+                if VoteGui then break end
+            end
         end
     end
-
-    debug("Vote GUI found")
     
-    -- Try to find the replay button (check both direct and nested paths)
-    local replayButton = VoteGui.Frame.CosmeticInterface:FindFirstChild("Replay")
+    if not VoteGui then
+        debug("No GUI with replay functionality found")
+        return
+    end
+    
+    -- Comprehensive search for the replay button
+    local replayButton
+    
+    -- Method 1: Check standard path
+    if VoteGui:FindFirstChild("Frame") and VoteGui.Frame:FindFirstChild("CosmeticInterface") then
+        replayButton = VoteGui.Frame.CosmeticInterface:FindFirstChild("Replay")
+        if replayButton then
+            debug("Found replay button in standard path")
+        end
+    end
+    
+    -- Method 2: Deep search if not found
     if not replayButton then
-        debug("Replay button not found in standard path, searching deeper...")
-        -- Secondary search pattern
+        debug("Searching deeply for replay button...")
         for _, obj in pairs(VoteGui:GetDescendants()) do
             if obj.Name == "Replay" and (obj:IsA("TextButton") or obj:IsA("ImageButton")) then
                 replayButton = obj
@@ -85,116 +123,151 @@ local function autoClickReplay()
                 break
             end
         end
-        
-        if not replayButton then
-            debug("Replay button not found after deep search")
-            return
+    end
+    
+    -- Method 3: Text-based search
+    if not replayButton then
+        debug("Searching for any button with 'Replay' text...")
+        for _, obj in pairs(VoteGui:GetDescendants()) do
+            if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and 
+               obj.Text and string.lower(obj.Text):find("replay") then
+                replayButton = obj
+                debug("Found replay button via text search: " .. obj:GetFullName())
+                break
+            end
         end
     end
     
-    debug("Replay button found")
+    if not replayButton then
+        debug("No replay button found after exhaustive search")
+        return
+    end
+    
+    debug("Replay button found: " .. replayButton:GetFullName())
+    
+    -- Get inset for proper positioning
+    local inset = GuiService:GetGuiInset()
+    
+    -- Get click position
+    local posX = replayButton.AbsolutePosition.X + replayButton.AbsoluteSize.X/2 + inset.X
+    local posY = replayButton.AbsolutePosition.Y + replayButton.AbsoluteSize.Y/2 + inset.Y
+    
+    debug("Button center position: " .. posX .. ", " .. posY)
     
     -- Visual selection (works on Desktop)
     GuiService.SelectedObject = replayButton
     
-    -- Get click position accounting for platform differences
-    local inset = GuiService:GetGuiInset()
-    local posX = replayButton.AbsolutePosition.X + replayButton.AbsoluteSize.X/2 + inset.X
-    local posY = replayButton.AbsolutePosition.Y + replayButton.AbsoluteSize.Y/2 + inset.Y
-    
-    debug("Clicking at position: " .. posX .. ", " .. posY)
-    
-    -- Multiple attempts to ensure button click
-    for i = 1, AUTO_CLICK_ATTEMPTS do
+    -- Multiple attempts with different methods
+    for i = 1, 15 do  -- Increased from 10 to 15 attempts
         if not replayButton:IsDescendantOf(game) then 
             debug("Replay button no longer exists, breaking loop")
             break 
         end
         
-        -- Platform-specific input methods
-        if PLATFORM == "Desktop" then
-            debug("Desktop click attempt " .. i)
-            -- Mouse click for Desktop
-            VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, true, game, 1)
-            task.wait(0.05)
-            VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, false, game, 1)
-        else
-            debug("Mobile tap attempt " .. i)
-            -- For mobile, use TouchEvent instead
-            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(posX, posY), true)
-            task.wait(0.05)
-            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(posX, posY), false)
-            
-            -- Add a slight delay then try again with slightly different coordinates
-            task.wait(0.1)
-            local offsetX = posX + math.random(-5, 5)
-            local offsetY = posY + math.random(-5, 5)
-            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(offsetX, offsetY), true)
-            task.wait(0.05)
-            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(offsetX, offsetY), false)
-        end
+        debug("Click attempt " .. i .. " using multiple methods")
         
-        -- Direct signal firing methods (for both platforms)
-        debug("Attempting signal methods")
-        
-        -- Method 1: Activated signal (modern)
+        -- Method 1: Direct property modification (most reliable)
         pcall(function()
+            if replayButton.AutoButtonColor ~= nil then
+                -- Simulate button press through property
+                local originalColor = replayButton.BackgroundColor3
+                replayButton.BackgroundColor3 = Color3.new(0.7, 0.7, 0.7)  -- Darken to simulate press
+                task.wait(0.05)
+                replayButton.BackgroundColor3 = originalColor
+            end
+        end)
+        
+        -- Method 2: Direct signal invocation (most direct)
+        pcall(function()
+            debug("Firing Activated signal")
             firesignal(replayButton.Activated)
-            debug("Activated signal fired")
         end)
         
-        -- Method 2: MouseButton1Click (legacy)
+        task.wait(0.05)
+        
         pcall(function()
+            debug("Firing MouseButton1Click signal")
             firesignal(replayButton.MouseButton1Click)
-            debug("MouseButton1Click signal fired")
         end)
         
-        -- Method 3: MouseButton1Down + MouseButton1Up (comprehensive)
+        task.wait(0.05)
+        
         pcall(function()
+            debug("Firing MouseButton1Down+Up signals")
             if replayButton.MouseButton1Down then
                 firesignal(replayButton.MouseButton1Down)
                 task.wait(0.05)
                 firesignal(replayButton.MouseButton1Up)
-                debug("MouseButton1Down+Up signals fired")
             end
         end)
         
-        -- Short delay between attempts
+        -- Method 3: Platform-specific input simulation
+        if PLATFORM == "Desktop" then
+            -- Multiple click spots around button center for reliability
+            for dx = -5, 5, 5 do
+                for dy = -5, 5, 5 do
+                    VirtualInputManager:SendMouseButtonEvent(posX + dx, posY + dy, 0, true, game, 1)
+                    task.wait(0.03)
+                    VirtualInputManager:SendMouseButtonEvent(posX + dx, posY + dy, 0, false, game, 1)
+                    task.wait(0.05)
+                end
+            end
+        else
+            -- For mobile, use TouchEvent at various points
+            for dx = -10, 10, 5 do
+                for dy = -10, 10, 5 do
+                    VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(posX + dx, posY + dy), true)
+                    task.wait(0.03)
+                    VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(posX + dx, posY + dy), false)
+                    task.wait(0.05)
+                end
+            end
+            
+            -- Extended mobile tapping at center
+            simulateTap(posX, posY)
+        end
+        
+        -- Try calling the button's function directly if it's a TextButton
+        pcall(function()
+            if typeof(replayButton) == "Instance" and replayButton:IsA("TextButton") and 
+               typeof(replayButton.Callback) == "function" then
+                debug("Calling button Callback function directly")
+                replayButton.Callback()
+            end
+        end)
+        
+        -- Wait between comprehensive attempts
         task.wait(0.3)
     end
     
-    debug("Finished replay button click attempts")
+    -- Final safety: try clicking in game menu areas where replay buttons commonly appear
+    debug("Performing safety clicks in common replay button locations")
+    local viewportSize = workspace.CurrentCamera.ViewportSize
+    local commonSpots = {
+        {x = viewportSize.X/2, y = viewportSize.Y/2},                       -- Center
+        {x = viewportSize.X/2, y = viewportSize.Y * 0.75},                   -- Bottom center
+        {x = viewportSize.X/2, y = viewportSize.Y * 0.25},                   -- Top center
+        {x = viewportSize.X * 0.75, y = viewportSize.Y * 0.75},              -- Bottom right
+        {x = viewportSize.X * 0.25, y = viewportSize.Y * 0.75}               -- Bottom left
+    }
     
-    -- Final backup: Scan for any button with "Replay" text
-    debug("Scanning for any button with 'Replay' text...")
-    for _, gui in pairs(playerGui:GetDescendants()) do
-        if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and 
-           ((gui.Text and gui.Text:lower():find("replay")) or 
-            (gui.Name:lower():find("replay"))) then
-            
-            debug("Found alternative replay button: " .. gui:GetFullName())
-            
-            -- Get position
-            local altPosX = gui.AbsolutePosition.X + gui.AbsoluteSize.X/2 + inset.X
-            local altPosY = gui.AbsolutePosition.Y + gui.AbsoluteSize.Y/2 + inset.Y
-            
-            -- Click based on platform
-            if PLATFORM == "Desktop" then
-                VirtualInputManager:SendMouseButtonEvent(altPosX, altPosY, 0, true, game, 1)
-                task.wait(0.05)
-                VirtualInputManager:SendMouseButtonEvent(altPosX, altPosY, 0, false, game, 1)
-            else
-                VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(altPosX, altPosY), true)
-                task.wait(0.05)
-                VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(altPosX, altPosY), false)
-            end
-            
-            -- Fire signals
-            pcall(function() firesignal(gui.Activated) end)
-            pcall(function() firesignal(gui.MouseButton1Click) end)
-            break
+    for _, spot in ipairs(commonSpots) do
+        if PLATFORM == "Desktop" then
+            VirtualInputManager:SendMouseButtonEvent(spot.x, spot.y, 0, true, game, 1)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(spot.x, spot.y, 0, false, game, 1)
+        else
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(spot.x, spot.y), true)
+            task.wait(0.05)
+            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(spot.x, spot.y), false)
+             VirtualInputManager:SendMouseButtonEvent(spot.x, spot.y, 0, true, game, 1)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(spot.x, spot.y, 0, false, game, 1)
         end
+        task.wait(0.2)
     end
+    
+    debug("Completed all replay button click attempts")
 end
 
 -- Space spam function with mobile support

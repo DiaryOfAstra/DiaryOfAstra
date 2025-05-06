@@ -23,7 +23,7 @@ local PLATFORM = (UserInputService and UserInputService:GetLastInputType() == En
 local DEBUG_MODE = true  -- Enable debug output
 local CHECK_INTERVAL = 2       -- How often to check for the replay button (seconds)
 local RUNTIME_MINUTES = 15     -- How long the script should run (minutes)
-local isRunning = true         -- Control variable for main loop
+local isRunning = true            -- Control variable for main loop
 local lastClickTime = 0        -- Track when we last attempted to click a button
 
 -- State
@@ -31,49 +31,102 @@ local isScriptActive = true
 local bossSpawned = false
 local connectionEstablished = false
 
--- Debug printing function
-local function debug(msg)
-    if DEBUG_MODE then
-        print("[AUTO-BOSS] " .. msg)
-    end
+local function debug(message)
+    local timeStr = string.format("%.1f", tick())
+    print("[ReplayClicker " .. timeStr .. "] " .. message)
 end
 
-debug("Script started - Platform: " .. PLATFORM)
+debug("Script started - will run for " .. RUNTIME_MINUTES .. " minutes")
+debug("Platform detected: " .. PLATFORM)
+
+-- Track if selection is visible
+local isSelectionVisible = true
+pcall(function()
+    isSelectionVisible = GuiService.SelectionImageObject ~= nil
+end)
 
 -- Mobile touch simulation with extended duration
 local function simulateTap(x, y)
     if PLATFORM == "Mobile" then
-        debug("Simulating mobile tap at " .. x .. ", " .. y)
+        debug("Simulating extended mobile tap at " .. x .. ", " .. y)
         local startTime = os.clock()
         local TAP_DURATION = 15  -- 15 seconds of continuous tapping
         
-        while os.clock() - startTime < TAP_DURATION and isScriptActive do
-            -- Send press and release events with realistic timing
-            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(x, y), true)
-            task.wait(math.random(0.03, 0.07))  -- Randomize press duration
-            VirtualInputManager:SendTouchEvent(Enum.UserInputType.Touch, 0, Vector2.new(x, y), false)
-            
-            -- Add random delay between taps for human-like pattern
-            task.wait(math.random(0.1, 0.3))
-        end
+        -- Create a new thread for extended tapping
+        spawn(function()
+            while os.clock() - startTime < TAP_DURATION and isScriptActive do
+                -- Send press and release events with realistic timing
+                pcall(function()
+                    VirtualInputManager:SendTouchEvent(0, Vector2.new(x, y), true)
+                    task.wait(math.random(0.03, 0.07))  -- Randomize press duration
+                    VirtualInputManager:SendTouchEvent(0, Vector2.new(x, y), false)
+                end)
+                
+                -- Add random delay between taps for human-like pattern
+                task.wait(math.random(0.1, 0.3))
+                
+                -- Slightly vary position for more natural-looking taps
+                local varX = x + math.random(-3, 3)
+                local varY = y + math.random(-3, 3)
+                pcall(function()
+                    VirtualInputManager:SendTouchEvent(0, Vector2.new(varX, varY), true)
+                    task.wait(math.random(0.03, 0.07))
+                    VirtualInputManager:SendTouchEvent(0, Vector2.new(varX, varY), false)
+                end)
+                
+                task.wait(math.random(0.1, 0.3))
+            end
+            debug("Extended tap sequence completed")
+        end)
     end
 end
 
+-- Function to check if button click is on cooldown
+local function isOnCooldown()
+    local cooldownTime = 3 -- seconds between allowed click attempts
+    return (tick() - lastClickTime) < cooldownTime
+end
 
-           gui.Name:lower():find("ui") or 
-           gui.Name:lower():find("death") or 
-           gui.Name:lower():find("end") or
-           gui.Name:lower():find("result") or
-           gui.Name:lower():find("round")) then
-            table.insert(potentialGuis, gui)
+-- Main function to find and click replay button
+local function autoClickReplay()
+    if isOnCooldown() then return end
+    
+    debug("Searching for replay button...")
+    
+    -- Check if PlayerGui exists (player might be respawning)
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if not playerGui then
+        debug("PlayerGui not found - player might be respawning")
+        return
+    end
+    
+    -- Look for potential GUI containers that might hold the replay button
+    local potentialGuis = {}
+    
+    -- First check for the Vote GUI
+    local voteGui = playerGui:FindFirstChild("Vote")
+    if voteGui then
+        table.insert(potentialGuis, voteGui)
+    end
+    
+    -- Look for other potential GUIs that might contain replay functionality
+    for _, guiObject in pairs(playerGui:GetChildren()) do
+        if guiObject:IsA("ScreenGui") and 
+          (guiObject.Name:lower():find("game") or 
+           guiObject.Name:lower():find("ui") or 
+           guiObject.Name:lower():find("death") or 
+           guiObject.Name:lower():find("end") or
+           guiObject.Name:lower():find("result") or
+           guiObject.Name:lower():find("round")) then
+            table.insert(potentialGuis, guiObject)
         end
     end
     
     -- If we found no likely GUIs, check all screen GUIs
     if #potentialGuis == 0 then
-        for _, gui in pairs(playerGui:GetChildren()) do
-            if gui:IsA("ScreenGui") then
-                table.insert(potentialGuis, gui)
+        for _, guiObject in pairs(playerGui:GetChildren()) do
+            if guiObject:IsA("ScreenGui") then
+                table.insert(potentialGuis, guiObject)
             end
         end
     end
@@ -118,20 +171,22 @@ end
     
     -- If still not found, check for any GUI element with replay in its name/text
     if not replayButton then
-        for _, gui in pairs(playerGui:GetDescendants()) do
-            if (gui:IsA("TextButton") or gui:IsA("ImageButton")) then
+        for _, guiElement in pairs(playerGui:GetDescendants()) do
+            if (guiElement:IsA("TextButton") or guiElement:IsA("ImageButton")) then
                 -- Check name
-                if gui.Name:lower():find("replay") or gui.Name:lower():find("retry") then
-                    replayButton = gui
-                    debug("Found button with replay/retry in name: " .. gui:GetFullName())
+                if guiElement.Name:lower():find("replay") or guiElement.Name:lower():find("retry") then
+                    replayButton = guiElement
+                    debug("Found button with replay/retry in name: " .. guiElement:GetFullName())
                     break
                 end
                 
                 -- Check text for TextButtons
-                if gui:IsA("TextButton") and gui.Text and 
-                   (gui.Text:lower():find("replay") or gui.Text:lower():find("play again") or gui.Text:lower():find("retry")) then
-                    replayButton = gui
-                    debug("Found button with replay/retry in text: " .. gui:GetFullName())
+                if guiElement:IsA("TextButton") and guiElement.Text and 
+                   (guiElement.Text:lower():find("replay") or 
+                    guiElement.Text:lower():find("play again") or 
+                    guiElement.Text:lower():find("retry")) then
+                    replayButton = guiElement
+                    debug("Found button with replay/retry in text: " .. guiElement:GetFullName())
                     break
                 end
             end
@@ -185,6 +240,11 @@ end
     local posY = replayButton.AbsolutePosition.Y + replayButton.AbsoluteSize.Y/2 + inset.Y
     
     debug("Clicking at position: " .. posX .. ", " .. posY)
+    
+    -- Start extended tapping for mobile devices
+    if PLATFORM == "Mobile" then
+        simulateTap(posX, posY)
+    end
     
     -- Multiple attempts to ensure button click
     for i = 1, AUTO_CLICK_ATTEMPTS do
@@ -269,17 +329,18 @@ spawn(function()
     end
     
     debug("Script finished running after " .. RUNTIME_MINUTES .. " minutes")
+    isScriptActive = false
 end)
 
 -- Provide a way to stop the script if needed
 local function stopScript()
     isRunning = false
+    isScriptActive = false
     debug("Script manually stopped")
 end
 
 -- Return the stop function so it can be called if needed
 return stopScript
-
 -- Space spam function with mobile support
 local function spamSpace()
     debug("Starting space/touch spam for " .. SPAM_DURATION .. " seconds")

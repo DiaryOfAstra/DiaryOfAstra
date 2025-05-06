@@ -339,8 +339,7 @@ local function stopScript()
     debug("Script manually stopped")
 end
 
--- Return the stop function so it can be called if needed
-return stopScript
+
 -- Space spam function with mobile support
 local function spamSpace()
     debug("Starting space/touch spam for " .. SPAM_DURATION .. " seconds")

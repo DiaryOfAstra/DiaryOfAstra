@@ -95,7 +95,7 @@ local function expandNapes(titans)
         n.Locked       = false
         n.Size         = Vector3.new(NAPE_WIDTH, NAPE_HEIGHT, NAPE_DEPTH)
         n.CanCollide   = false
-        n.Transparency = 0.8
+        n.Transparency = 1
     end
     log("All napes expanded")
 end

@@ -4,6 +4,7 @@ local Workspace    = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
 local RunService   = game:GetService("RunService")
 local VIM          = game:GetService("VirtualInputManager")
+local GuiService =  game:GetService("GuiService")
 
 local player    = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -60,9 +61,22 @@ local function tryRefill()
     if refillPart then
         root.CFrame = refillPart.CFrame
         wait(1)
+        local refill = game.Players.LocalPlayer.PlayerGui.Interface.Mobile.Refill
+        local inset = GuiService:GetGuiInset()
+        local posX = refill.AbsolutePosition.X + refill.AbsoluteSize.X/2 + inset.X
+        local posY = refill.AbsolutePosition.Y + refill.AbsoluteSize.Y/2 + inset.Y
         pcall(function()
             VIM:SendKeyEvent(true,  Enum.KeyCode.R, false, game)
-            VIM:SendKeyEvent(false, Enum.KeyCode.R, false, game)
+            VIM:SendKeyEvent(false, Enum.KeyCode.R, false, game) 
+            task.wait(0.05)
+            VIM:SendMouseButtonEvent(posX, posY, 0, true, game, 1)
+            task.wait(0.05)
+            VIM:SendMouseButtonEvent(posX, posY, 0, false, game, 1)
+            task.wait(0.05)
+            VIM:SendTouchEvent(0, Vector2.new(posX, posY), true)
+            task.wait(0.05)
+            VIM:SendTouchEvent(0, Vector2.new(posX, posY), false)
+
         end)
         log("Refill key sent")
         wait(3)

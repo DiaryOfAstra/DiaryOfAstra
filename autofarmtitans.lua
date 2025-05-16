@@ -1,4 +1,4 @@
-task.wait(20)
+local function runMainnScript()
 
 -- Services
 local Players      = game:GetService("Players")
@@ -559,3 +559,22 @@ spawn(function()
 end)
 
 log("Holy-sweeper Titan killer loaded")
+end
+task.spawn(function()
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+    
+    local player = game:GetService("Players").LocalPlayer
+    if not player then
+        player = game:GetService("Players").PlayerAdded:Wait()
+    end
+    
+    if not player.Character then
+        player.CharacterAdded:Wait()
+    end
+    
+    task.wait(2) -- Additional safety wait
+    
+    runMainnScript()
+end)

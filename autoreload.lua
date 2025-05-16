@@ -1,5 +1,6 @@
-task.wait(20)
+
 -- BladeAutoReload.lua
+local function runMainScript()
 
 local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -58,4 +59,23 @@ RunService.RenderStepped:Connect(function()
             debounce = false
         end)
     end
+end)
+       end
+task.spawn(function()
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+    
+    local player = game:GetService("Players").LocalPlayer
+    if not player then
+        player = game:GetService("Players").PlayerAdded:Wait()
+    end
+    
+    if not player.Character then
+        player.CharacterAdded:Wait()
+    end
+    
+    task.wait(2) -- Additional safety wait
+    
+    runMainScript()
 end)

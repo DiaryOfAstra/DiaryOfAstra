@@ -4,8 +4,8 @@ local SafeAutoExec = {}
 
 function SafeAutoExec:Queue(scriptFunction)
     task.spawn(function()
-             print("[SafeAutoExec] Waiting 20 seconds before starting execution...")
-        task.wait(20)
+             print("[SafeAutoExec] Waiting 30 seconds before starting execution...")
+        task.wait(30)
         print("[SafeAutoExec] Starting execution sequence...")
         -- Step 1: Wait for game to fully load
         if not game:IsLoaded() then

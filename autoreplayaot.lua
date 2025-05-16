@@ -1,4 +1,4 @@
-task.wait(20)
+local function runMainnnScript()
 -- Services
 local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
@@ -145,4 +145,23 @@ end)
 player.CharacterAdded:Connect(function()
     debug("Player respawn detected")
     clickRetry()  -- Extra click attempt on respawn
+end)
+end
+task.spawn(function()
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+    
+    local player = game:GetService("Players").LocalPlayer
+    if not player then
+        player = game:GetService("Players").PlayerAdded:Wait()
+    end
+    
+    if not player.Character then
+        player.CharacterAdded:Wait()
+    end
+    
+    task.wait(2) -- Additional safety wait
+    
+    runMainnnScript()
 end)

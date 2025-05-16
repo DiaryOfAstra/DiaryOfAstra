@@ -63,6 +63,7 @@ SafeAutoExec:Queue(function()
     local SWEEP_DISTANCE = 80            -- Distance to sweep horizontally
     local SWEEP_TIME     = 1.5           -- Time to sweep across nape
     local CHECK_INTERVAL = 0.2           -- How often to check if Titan is dead
+    local BLADE_CHECK_INTERVAL = 0.3     -- How often to check blade status during attacks
 
     -- Helper: center-screen coords
     local function centerXY()
@@ -118,26 +119,86 @@ SafeAutoExec:Queue(function()
         wait(0.1)
     end
 
-    -- Find all refill stations in workspace
+    -- Find all refill stations in workspace with more robust detection
     local function findAllRefillStations()
         local refillStations = {}
         
-        -- Helper function to search recursively
-        local function searchForRefill(parent, depth)
-            if depth > 5 then return end  -- Prevent too deep recursion
+        -- Check the common refill locations first (more reliable)
+        if Workspace:FindFirstChild("Unclimbable") and 
+           Workspace.Unclimbable:FindFirstChild("Reloads") then
+            local reloads = Workspace.Unclimbable.Reloads
             
-            for _, child in pairs(parent:GetChildren()) do
-                if child:IsA("BasePart") and child.Name == "Refill" then
-                    table.insert(refillStations, child)
-                    log("Found refill part: " .. child:GetFullName())
-                elseif child:IsA("Model") or child:IsA("Folder") then
-                    searchForRefill(child, depth + 1)
-                end
+            -- Try both gas tanks and blades
+            if reloads:FindFirstChild("GasTanks") and 
+               reloads.GasTanks:FindFirstChild("Refill") then
+                table.insert(refillStations, reloads.GasTanks.Refill)
+                log("Found primary blade refill station at: " .. reloads.GasTanks.Refill:GetFullName())
+            end
+            
+            if reloads:FindFirstChild("Blades") and 
+               reloads.Blades:FindFirstChild("Refill") then
+                table.insert(refillStations, reloads.Blades.Refill)
+                log("Found primary blade refill station at: " .. reloads.Blades.Refill:GetFullName())
             end
         end
         
-        searchForRefill(workspace, 0)
+        -- Only if we didn't find the primary stations, we'll do a full search
+        if #refillStations == 0 then
+            -- Helper function to search recursively
+            local function searchForRefill(parent, depth)
+                if depth > 5 then return end  -- Prevent too deep recursion
+                
+                for _, child in pairs(parent:GetChildren()) do
+                    if child:IsA("BasePart") and child.Name == "Refill" then
+                        table.insert(refillStations, child)
+                        log("Found backup refill part: " .. child:GetFullName())
+                    elseif child:IsA("Model") or child:IsA("Folder") then
+                        searchForRefill(child, depth + 1)
+                    end
+                end
+            end
+            
+            searchForRefill(workspace, 0)
+        end
+        
         return refillStations
+    end
+
+    -- Safely teleport to a location using tweening for stability
+    local function safeTeleport(targetPosition, lookAt)
+        -- Create a stabilized position 5 studs above the target to prevent falling through
+        local stabilizedPos = Vector3.new(
+            targetPosition.X,
+            targetPosition.Y + 5, -- Slightly above to prevent falling through
+            targetPosition.Z
+        )
+        
+        -- Create a CFrame that positions us at the position and optionally looks at target
+        local targetCFrame
+        if lookAt then
+            targetCFrame = CFrame.new(stabilizedPos, lookAt)
+        else
+            targetCFrame = CFrame.new(stabilizedPos)
+        end
+        
+        -- First move with tweening (more stable)
+        local tween = TweenService:Create(
+            root,
+            TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {CFrame = targetCFrame}
+        )
+        
+        tween:Play()
+        tween.Completed:Wait()
+        
+        -- Add a small delay for physics to stabilize
+        wait(0.2)
+        
+        -- Finalize position with direct set to ensure accuracy
+        root.CFrame = targetCFrame
+        wait(0.3) -- Additional stabilization time
+        
+        return true
     end
 
     -- Auto-refill when blades are empty
@@ -159,135 +220,72 @@ SafeAutoExec:Queue(function()
         for i, refillPart in ipairs(refillStations) do
             log("Trying refill station " .. i .. "/" .. #refillStations)
             
-            -- Teleport directly to the refill station with a small offset and facing it
+            -- Get refill position
             local refillPos = refillPart.Position
             
-            -- Create a position 5 studs away from the refill in a horizontal direction
-            local offsetPos = Vector3.new(refillPos.X - 5, refillPos.Y, refillPos.Z)
+            -- Try multiple positions around the refill to find the most stable spot
+            local positions = {
+                {offset = Vector3.new(-7, 0, 0), name = "left"},
+                {offset = Vector3.new(7, 0, 0), name = "right"},
+                {offset = Vector3.new(0, 0, -7), name = "front"},
+                {offset = Vector3.new(0, 0, 7), name = "back"}
+            }
             
-            -- Create a CFrame that positions us at the offset position and looks at the refill
-            root.CFrame = CFrame.new(offsetPos, refillPos)
-            
-            log("Teleported to refill position")
-            wait(1)
-            
-            -- Check platform and use appropriate input method
-            if isMobile then
-                log("Using mobile touch controls for refill")
+            -- Try each position until refill works
+            for _, pos in ipairs(positions) do
+                -- Calculate teleport target position
+                local tryPos = refillPos + pos.offset
                 
-                -- Start continuous touch pressing for mobile
-                local touchActive = true
-                local touchThread = coroutine.wrap(function()
-                    local touchCount = 0
-                    while touchActive do
-                        -- Check if blades are full
-                        if areBladesFull() then
-                            log("Blades full! Stopping touch")
-                            touchActive = false
-                            break
-                        end
-                        
-                        -- Send touch event at center of screen
-                        pcall(function()
-                            triggerTouchRefill()
-                        end)
-                        
-                        touchCount = touchCount + 1
-                        if touchCount % 5 == 0 then
-                            log(("Still touching... (count: %d)"):format(touchCount))
-                        end
-                        
-                        -- Safety check to prevent infinite loop
-                        if touchCount > 100 then
-                            log("Safety limit reached, stopping touch")
-                            touchActive = false
-                            break
-                        end
-                    end
-                end)
+                log("Attempting stable teleport to refill from " .. pos.name .. " position")
+                safeTeleport(tryPos, refillPos)
                 
-                -- Start the touch thread
-                touchThread()
-            else
-                log("Using keyboard controls for refill")
+                -- Check platform and use appropriate input method
+                log("Using " .. (isMobile and "mobile" or "keyboard") .. " controls for refill")
                 
-                -- Start continuous key pressing for PC
-                local keyActive = true
-                local keyThread = coroutine.wrap(function()
-                    local keyCount = 0
-                    while keyActive do
-                        -- Check if blades are full
-                        if areBladesFull() then
-                            log("Blades full! Stopping key press")
-                            keyActive = false
-                            break
-                        end
-                        
-                        -- Send R key event
-                        pcall(function()
-                            pressRefillKey()
-                        end)
-                        
-                        keyCount = keyCount + 1
-                        if keyCount % 5 == 0 then
-                            log(("Still pressing R... (count: %d)"):format(keyCount))
-                        end
-                        
-                        -- Safety check to prevent infinite loop
-                        if keyCount > 100 then
-                            log("Safety limit reached, stopping key press")
-                            keyActive = false
-                            break
-                        end
-                    end
-                end)
+                -- Try refilling multiple times
+                local refillAttempts = 0
+                local refillStartTime = tick()
+                local maxRefillTime = 10 -- Maximum time to try refilling
                 
-                -- Start the key thread
-                keyThread()
-            end
-            
-            -- Wait for blades to be full or timeout
-            local startTime = tick()
-            while not areBladesFull() and tick() - startTime < 10 do
-                wait(0.1)
-            end
-            
-            if areBladesFull() then
-                log("Refill successful!")
-            else
-                log("Refill timeout or failed - turning around to try again")
-                -- Try a 180° turn and retry if first attempt failed
-                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(180), 0)
-                wait(0.5)
-                
-                -- Second attempt with appropriate input method
-                local secondStartTime = tick()
-                local attempt = 0
-                
-                while not areBladesFull() and tick() - secondStartTime < 5 do
-                    attempt = attempt + 1
+                -- Continue attempting to refill until successful or timeout
+                while not areBladesFull() and tick() - refillStartTime < maxRefillTime do
                     if isMobile then
-                        triggerTouchRefill() 
+                        triggerTouchRefill()
                     else
                         pressRefillKey()
                     end
                     
-                    if attempt % 3 == 0 then
-                        log("Still trying to refill after turning around...")
+                    refillAttempts = refillAttempts + 1
+                    
+                    if refillAttempts % 5 == 0 then
+                        log(("Still trying to refill... (attempt: %d)"):format(refillAttempts))
                     end
+                    
+                    -- Check if refill is working
+                    if areBladesFull() then
+                        log("Refill successful from " .. pos.name .. " position!")
+                        wait(0.5) -- Wait for stability
+                        return true
+                    end
+                    
+                    -- Short wait between attempts
                     wait(0.3)
+                    
+                    -- If taking too long, adjust position slightly and try again
+                    if refillAttempts % 10 == 0 and refillAttempts < 20 then
+                        -- Make a small adjustment to position
+                        local adjustedPos = tryPos + Vector3.new(math.random(-2, 2), 0, math.random(-2, 2))
+                        safeTeleport(adjustedPos, refillPos)
+                        log("Adjusted position slightly to improve refill success chance")
+                    end
                 end
                 
-                if areBladesFull() then
-                    log("Second refill attempt successful!")
-                else
-                    log("All refill attempts failed")
-                end
+                -- If we've reached this point, this position didn't work
+                log("Refill failed from " .. pos.name .. " position, trying next...")
             end
-            
-            wait(1)
-            return true
         end
+        
+        log("All refill attempts failed")
         return false
     end
 
@@ -374,11 +372,22 @@ SafeAutoExec:Queue(function()
         -- Start attack loop
         local startTime = tick()
         local attacking = true
+        local lastBladeCheck = tick()
         
         -- Auto-swing loop
         local acc = 0
         local swingConn = RunService.RenderStepped:Connect(function(dt)
             if not attacking then return end
+            
+            -- IMPORTANT FIX #1: Check if blades are empty periodically during attack
+            if tick() - lastBladeCheck > BLADE_CHECK_INTERVAL then
+                lastBladeCheck = tick()
+                if isBladeEmpty() then
+                    log("BLADES EMPTY DETECTED DURING ATTACK - STOPPING IMMEDIATELY")
+                    attacking = false
+                    return
+                end
+            end
             
             -- Calculate current position based on time elapsed
             local elapsedTime = tick() - startTime
@@ -448,6 +457,13 @@ SafeAutoExec:Queue(function()
         -- Wait for kill or timeout
         local waitStart = tick()
         while attacking do
+            -- IMPORTANT FIX #1: Check if blades are empty during the wait loop too
+            if isBladeEmpty() then
+                log("BLADES EMPTY DETECTED DURING WAIT - STOPPING IMMEDIATELY")
+                attacking = false
+                break
+            end
+            
             if tick() - waitStart > KILL_TIMEOUT then
                 attacking = false
             end
@@ -456,21 +472,28 @@ SafeAutoExec:Queue(function()
         
         swingConn:Disconnect()
         log("Finished sweep attack")
+        
+        -- Return true if we stopped due to empty blades
+        return isBladeEmpty()
     end
 
-    -- Smooth movement between Titans
+    -- Smooth movement between Titans using the safer teleport method
     local function moveToNextTitan(currentPos, targetPos)
+        log("Moving safely to next Titan...")
+        
+        -- Use our safer teleport method instead of direct tweening
         local targetCF = CFrame.new(targetPos) * CFrame.Angles(math.rad(80), 0, 0)
         
+        -- Create a smoother, more stable tween
         local move = TweenService:Create(
             root,
-            TweenInfo.new(1, Enum.EasingStyle.Linear), -- Faster travel (was 2)
+            TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
             {CFrame = targetCF}
         )
         
-        log("Moving to next Titan...")
         move:Play()
         move.Completed:Wait()
+        wait(0.2) -- Small stabilization delay
     end
 
     -- Log platform info at startup
@@ -483,85 +506,27 @@ SafeAutoExec:Queue(function()
     -- Main
     spawn(function()
         while true do
-            -- Step 1: refill if needed
-            local refillAttempted = tryRefill()
-            if refillAttempted then
-                log("Refill attempt completed - waiting before continuing")
+            -- Step 1: Check if refill is needed FIRST before doing anything else
+            if isBladeEmpty() then
+                log("Blades empty - initiating refill sequence")
+                tryRefill()
                 wait(2)
-                -- Check if blades still empty after refill attempt
+                
+                -- If blades are still empty after refill attempt
                 if isBladeEmpty() then
-                    log("Blades still empty after refill attempt - trying alternative methods")
-                    -- Try multiple positions around the refill station
-                    local foundRefill = false
-                    
-                    -- Try finding the refill again
-                    local refillPart = nil
-                    if Workspace:FindFirstChild("Unclimbable") and 
-                       Workspace.Unclimbable:FindFirstChild("Reloads") then
-                        local reloads = Workspace.Unclimbable.Reloads
-                        -- Try both gas tanks and blades
-                        if reloads:FindFirstChild("GasTanks") and 
-                           reloads.GasTanks:FindFirstChild("Refill") then
-                            refillPart = reloads.GasTanks.Refill
-                        elseif reloads:FindFirstChild("Blades") and 
-                              reloads.Blades:FindFirstChild("Refill") then
-                            refillPart = reloads.Blades.Refill
-                        end
-                    end
-                    
-                    if refillPart then
-                        log("Making additional refill attempts with different positions")
-                        local positions = {
-                            {offset = Vector3.new(-5, 0, 0), name = "left"},
-                            {offset = Vector3.new(5, 0, 0), name = "right"},
-                            {offset = Vector3.new(0, 0, -5), name = "front"},
-                            {offset = Vector3.new(0, 0, 5), name = "back"}
-                        }
-                        
-                        for _, pos in ipairs(positions) do
-                            if not isBladeEmpty() then
-                                foundRefill = true
-                                break
-                            end
-                            
-                            local refillPos = refillPart.Position
-                            local tryPos = refillPos + pos.offset
-                            
-                            log("Trying refill from " .. pos.name .. " position")
-                            root.CFrame = CFrame.new(tryPos, refillPos)
-                            wait(0.5)
-                            
-                            -- Try input several times
-                            for i = 1, 5 do
-                                if isMobile then
-                                    triggerTouchRefill()
-                                else
-                                    pressRefillKey()
-                                end
-                                wait(0.3)
-                                
-                                if areBladesFull() then
-                                    log("Refill successful from " .. pos.name .. " position!")
-                                    foundRefill = true
-                                    break
-                                end
-                            end
-                            
-                            if foundRefill then break end
-                            wait(0.5)
-                        end
-                    else
-                        log("Couldn't find refill part for additional attempts")
-                    end
+                    log("Blades still empty after refill attempt - waiting before retrying")
+                    wait(5)
+                    continue
                 end
-                continue  -- Skip the rest of the loop after a refill attempt
+                
+                log("Blades refilled - continuing with titan hunting")
             end
 
             -- Step 2: find & expand
             local titans = getTitans()
             if #titans == 0 then
                 log("No Titans found—waiting…")
-                wait(1.5) -- Reduced wait time (was 3)
+                wait(1.5) -- Reduced wait time
                 continue
             end
             expandNapes(titans)
@@ -570,8 +535,16 @@ SafeAutoExec:Queue(function()
             titans = sortTitansByDistance(titans)
 
             -- Step 3: hover and sweep-attack each
+            local needsRefill = false
             for i, t in ipairs(titans) do
                 log(("Attacking %d/%d: %s"):format(i, #titans, t.mdl.Name))
+                
+                -- IMPORTANT FIX #1: Check blades before starting a new titan
+                if isBladeEmpty() then
+                    log("DETECTED EMPTY BLADES BEFORE ATTACK - BREAKING TO REFILL")
+                    needsRefill = true
+                    break
+                end
                 
                 -- Calculate starting position (left side of nape)
                 local napePos = t.nape.Position
@@ -587,16 +560,29 @@ SafeAutoExec:Queue(function()
                 end
                 
                 -- Execute the sweep attack
-                hoverAndSweep(t)
+                local bladesEmptied = hoverAndSweep(t)
+                
+                -- IMPORTANT FIX #1: Check if we stopped due to empty blades
+                if bladesEmptied or isBladeEmpty() then
+                    log("BLADES EMPTIED DURING ATTACK - BREAKING LOOP TO REFILL")
+                    needsRefill = true
+                    break
+                end
                 
                 -- Add a very short delay before moving to the next titan
                 wait(0.2)
             end
 
+            -- If we need to refill, skip the wait and immediately go to start of loop
+            if needsRefill then
+                log("Blade refill needed - skipping wait and proceeding to refill")
+                continue
+            end
+
             log("Cycle complete—restarting")
-            wait(0.5) -- Reduced wait time (was 1)
+            wait(0.5) -- Reduced wait time
         end
     end)
 
-    log("Holy-sweeper Titan killer loaded")
+    log("Holy-sweeper Titan killer loaded and improved")
 end)

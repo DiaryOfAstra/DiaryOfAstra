@@ -71,11 +71,38 @@ local function clickRetry()
 
     -- Platform-specific interaction
     if PLATFORM == "Mobile" then
-        simulateTap(posX, posY)
-        task.wait(0.05)
-        VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, true, game, 1)
-        task.wait(0.05)
-        VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, false, game, 1)
+        -- Method 1: Direct GUI interaction
+            local success1 = pcall(function()
+                GuiService.SelectedObject = retryButton
+                task.wait(0.1)
+                -- Try to directly invoke the button
+                if retryButton and retryButton.Activated then
+                    retryButton.Activated:Fire()
+                end
+            end)
+            
+            -- Method 2: Direct button invoke
+            task.wait(0.1)
+            pcall(function()
+                if typeof(retryButton) == "Instance" and retryButton:IsA("GuiButton") then
+                    -- Try to find and call the click handler directly
+                    for _, connection in pairs(getconnections(retryButton.MouseButton1Click)) do
+                        connection:Fire()
+                    end
+                    for _, connection in pairs(getconnections(retryButton.Activated)) do
+                        connection:Fire()
+                    end
+                end
+            end)
+            
+            -- Method 3: SendMouseButtonEvent without GUI inset
+            task.wait(0.1)
+            local posX = retryButton.AbsolutePosition.X + retryButton.AbsoluteSize.X/2
+            local posY = retryButton.AbsolutePosition.Y + retryButton.AbsoluteSize.Y/2
+            
+            VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, true, game, 0)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, false, game, 0)
     else
         for i = 1, AUTO_CLICK_ATTEMPTS do
             VirtualInputManager:SendMouseButtonEvent(posX, posY, 0, true, game, 1)

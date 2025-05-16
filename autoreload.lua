@@ -1,3 +1,4 @@
+task.wait(20)
 -- BladeAutoReload.lua
 
 local Players    = game:GetService("Players")

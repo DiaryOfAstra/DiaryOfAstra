@@ -61,7 +61,7 @@ SafeAutoExec:Queue(function()
     local NAPE_DEPTH     = 106           -- Keeping proportional
     local NAPE_HEIGHT    = 20000         -- Tall sky column
     local HOVER_HEIGHT   = 150           -- Position reasonably above Titan
-    local SWING_DELAY    = 0.05          -- Swing rate
+    local SWING_DELAY    = math.random(80, 120) / 1000  -- Randomized swing rate (0.08-0.12s)
     local KILL_TIMEOUT   = 3             -- Reduced max time per Titan (was 8)
     local SWEEP_DISTANCE = 80            -- Distance to sweep horizontally
     local SWEEP_TIME     = 1.5           -- Time to sweep across nape
@@ -77,10 +77,13 @@ SafeAutoExec:Queue(function()
     -- Precompute exact center once
     local MID_X, MID_Y = centerXY()
 
-    -- **Lock the mouse at center every frame with pcall to prevent errors**
+    -- **Lock the mouse at center with randomization to avoid detection**
     RunService.RenderStepped:Connect(function()
+        -- Add small random offset to cursor position
+        local offsetX = math.random(-2, 2)
+        local offsetY = math.random(-2, 2)
         pcall(function()
-            VIM:SendMouseMoveEvent(MID_X, MID_Y, game)
+            VIM:SendMouseMoveEvent(MID_X + offsetX, MID_Y + offsetY, game)
         end)
     end)
 
@@ -403,20 +406,27 @@ SafeAutoExec:Queue(function()
             -- Update position while maintaining downward angle
             root.CFrame = CFrame.new(currentPos) * CFrame.Angles(math.rad(80), 0, 0)
             
-            -- Ensure cursor is centered every frame
+            -- Ensure cursor is centered with slight randomization every frame
+            local offsetX = math.random(-2, 2)
+            local offsetY = math.random(-2, 2)
             pcall(function()
-                VIM:SendMouseMoveEvent(MID_X, MID_Y, game)
+                VIM:SendMouseMoveEvent(MID_X + offsetX, MID_Y + offsetY, game)
             end)
             
-            -- Swing timing
+            -- Swing timing with randomization
             acc = acc + dt
-            if acc >= SWING_DELAY then
-                acc = acc - SWING_DELAY
-                -- Click down/up at center with pcall to prevent errors
+            local currentSwingDelay = math.random(80, 120) / 1000  -- Randomize each swing
+            if acc >= currentSwingDelay then
+                acc = acc - currentSwingDelay
+                -- Add small random delay before clicking
+                wait(math.random(1, 5) / 1000)  -- 1-5ms random delay
+                -- Click down/up at center with slight randomization
+                local clickX = MID_X + math.random(-3, 3)
+                local clickY = MID_Y + math.random(-3, 3)
                 pcall(function()
-                    VIM:SendMouseButtonEvent(MID_X, MID_Y, 0, true, game, 0)
-                    wait(0.01) -- Shorter click duration for faster swings
-                    VIM:SendMouseButtonEvent(MID_X, MID_Y, 0, false, game, 0)
+                    VIM:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+                    wait(math.random(10, 30) / 1000) -- Randomized click duration (10-30ms)
+                    VIM:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
                 end)
             end
             
@@ -572,8 +582,8 @@ SafeAutoExec:Queue(function()
                     break
                 end
                 
-                -- Add a very short delay before moving to the next titan
-                wait(0.2)
+                -- Add a very short randomized delay before moving to the next titan
+                wait(math.random(200, 500) / 1000)  -- 200-500ms random delay
             end
 
             -- If we need to refill, skip the wait and immediately go to start of loop
@@ -583,7 +593,7 @@ SafeAutoExec:Queue(function()
             end
 
             log("Cycle complete—restarting")
-            wait(0.5) -- Reduced wait time
+            wait(math.random(500, 1500) / 1000) -- Randomized wait time (0.5-1.5s)
         end
     end)
 

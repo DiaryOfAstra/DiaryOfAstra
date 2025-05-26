@@ -4,9 +4,9 @@ local SafeAutoExec = {}
 
 function SafeAutoExec:Queue(scriptFunction)
     task.spawn(function()
-             print("[SafeAutoExec] Waiting before starting execution...")
+             
         task.wait(15)
-        print("[SafeAutoExec] Starting execution sequence...")
+        
         -- Step 1: Wait for game to fully load
         if not game:IsLoaded() then
             game.Loaded:Wait()
@@ -34,7 +34,6 @@ function SafeAutoExec:Queue(scriptFunction)
         -- Step 6: Execute the actual script function
         local success, err = pcall(scriptFunction)
         if not success then
-            warn("[SafeAutoExec] Script execution failed: " .. tostring(err))
         end
     end)
     
@@ -92,7 +91,6 @@ SafeAutoExec:Queue(function()
 
     -- Debug
     local function log(msg)
-        print(("[HolySweeperKiller] %s"):format(msg))
     end
 
     -- Check if blades are full
@@ -138,13 +136,11 @@ SafeAutoExec:Queue(function()
             if reloads:FindFirstChild("GasTanks") and 
                reloads.GasTanks:FindFirstChild("Refill") then
                 table.insert(refillStations, reloads.GasTanks.Refill)
-                log("Found primary blade refill station at: " .. reloads.GasTanks.Refill:GetFullName())
             end
             
             if reloads:FindFirstChild("Blades") and 
                reloads.Blades:FindFirstChild("Refill") then
                 table.insert(refillStations, reloads.Blades.Refill)
-                log("Found primary blade refill station at: " .. reloads.Blades.Refill:GetFullName())
             end
         end
         
@@ -157,7 +153,6 @@ SafeAutoExec:Queue(function()
                 for _, child in pairs(parent:GetChildren()) do
                     if child:IsA("BasePart") and child.Name == "Refill" then
                         table.insert(refillStations, child)
-                        log("Found backup refill part: " .. child:GetFullName())
                     elseif child:IsA("Model") or child:IsA("Folder") then
                         searchForRefill(child, depth + 1)
                     end
@@ -210,21 +205,17 @@ SafeAutoExec:Queue(function()
     -- Auto-refill when blades are empty
     local function tryRefill()
         if not isBladeEmpty() then return false end
-        log("Blades empty: refilling…")
         
         -- Find all refill stations in the workspace
         local refillStations = findAllRefillStations()
         
         if #refillStations == 0 then
-            log("ERROR: No refill stations found in workspace")
             return false
         end
         
-        log("Found " .. #refillStations .. " refill stations")
         
         -- Try each refill station
         for i, refillPart in ipairs(refillStations) do
-            log("Trying refill station " .. i .. "/" .. #refillStations)
             
             -- Get refill position
             local refillPos = refillPart.Position
@@ -242,11 +233,11 @@ SafeAutoExec:Queue(function()
                 -- Calculate teleport target position
                 local tryPos = refillPos + pos.offset
                 
-                log("Attempting stable teleport to refill from " .. pos.name .. " position")
+                
                 safeTeleport(tryPos, refillPos)
                 
                 -- Check platform and use appropriate input method
-                log("Using " .. (isMobile and "mobile" or "keyboard") .. " controls for refill")
+                
                 
                 -- Try refilling multiple times
                 local refillAttempts = 0
@@ -264,12 +255,12 @@ SafeAutoExec:Queue(function()
                     refillAttempts = refillAttempts + 1
                     
                     if refillAttempts % 5 == 0 then
-                        log(("Still trying to refill... (attempt: %d)"):format(refillAttempts))
+                        
                     end
                     
                     -- Check if refill is working
                     if areBladesFull() then
-                        log("Refill successful from " .. pos.name .. " position!")
+                        
                         wait(0.5) -- Wait for stability
                         return true
                     end
@@ -282,16 +273,16 @@ SafeAutoExec:Queue(function()
                         -- Make a small adjustment to position
                         local adjustedPos = tryPos + Vector3.new(math.random(-2, 2), 0, math.random(-2, 2))
                         safeTeleport(adjustedPos, refillPos)
-                        log("Adjusted position slightly to improve refill success chance")
+                        
                     end
                 end
                 
                 -- If we've reached this point, this position didn't work
-                log("Refill failed from " .. pos.name .. " position, trying next...")
+                
             end
         end
         
-        log("All refill attempts failed")
+        
         return false
     end
 
@@ -321,7 +312,7 @@ SafeAutoExec:Queue(function()
             n.CanCollide   = false
             n.Transparency = 0.8
         end
-        log("All napes expanded")
+        
     end
 
     -- Sort titans by distance
@@ -373,7 +364,7 @@ SafeAutoExec:Queue(function()
         root.CFrame = startCF
         wait(0.5) -- Short pause to stabilize
         
-        log("Starting sweep attack across nape")
+        
         
         -- Start attack loop
         local startTime = tick()
@@ -389,7 +380,7 @@ SafeAutoExec:Queue(function()
             if tick() - lastBladeCheck > BLADE_CHECK_INTERVAL then
                 lastBladeCheck = tick()
                 if isBladeEmpty() then
-                    log("BLADES EMPTY DETECTED DURING ATTACK - STOPPING IMMEDIATELY")
+                    
                     attacking = false
                     return
                 end
@@ -432,7 +423,7 @@ SafeAutoExec:Queue(function()
             
             -- Check if Titan is dead periodically
             if elapsedTime % CHECK_INTERVAL < dt and isTitanDead(titanInfo) then
-                log("Titan killed! Moving to next target")
+                
                 attacking = false
                 return
             end
@@ -441,7 +432,7 @@ SafeAutoExec:Queue(function()
             if elapsedTime > SWEEP_TIME then
                 -- After sweeping right, sweep back left
                 if alpha >= 1 and currentX >= endPos.X - 0.1 then
-                    log("Reversing sweep direction")
+                    
                     startTime = tick() - SWEEP_TIME -- Reset for reverse sweep
                     hoverPos, endPos = endPos, hoverPos -- Swap start/end to reverse
                 end
@@ -449,7 +440,7 @@ SafeAutoExec:Queue(function()
             
             -- Overall timeout
             if tick() - startTime > KILL_TIMEOUT then
-                log("Timeout reached, moving to next Titan")
+                
                 attacking = false
             end
         end)
@@ -458,7 +449,7 @@ SafeAutoExec:Queue(function()
         local deathCheckThread = coroutine.wrap(function()
             while attacking do
                 if isTitanDead(titanInfo) then
-                    log("Titan death detected! Moving on quickly")
+                    
                     attacking = false
                     break
                 end
@@ -472,7 +463,7 @@ SafeAutoExec:Queue(function()
         while attacking do
             -- IMPORTANT FIX #1: Check if blades are empty during the wait loop too
             if isBladeEmpty() then
-                log("BLADES EMPTY DETECTED DURING WAIT - STOPPING IMMEDIATELY")
+                
                 attacking = false
                 break
             end
@@ -484,7 +475,7 @@ SafeAutoExec:Queue(function()
         end
         
         swingConn:Disconnect()
-        log("Finished sweep attack")
+        
         
         -- Return true if we stopped due to empty blades
         return isBladeEmpty()
@@ -492,7 +483,7 @@ SafeAutoExec:Queue(function()
 
     -- Smooth movement between Titans using the safer teleport method
     local function moveToNextTitan(currentPos, targetPos)
-        log("Moving safely to next Titan...")
+        
         
         -- Use our safer teleport method instead of direct tweening
         local targetCF = CFrame.new(targetPos) * CFrame.Angles(math.rad(80), 0, 0)
@@ -511,9 +502,9 @@ SafeAutoExec:Queue(function()
 
     -- Log platform info at startup
     if isMobile then
-        log("Running on mobile platform - using touch controls")
+        
     else
-        log("Running on PC/desktop platform - using keyboard controls")
+        
     end
 
     -- Main
@@ -521,24 +512,24 @@ SafeAutoExec:Queue(function()
         while true do
             -- Step 1: Check if refill is needed FIRST before doing anything else
             if isBladeEmpty() then
-                log("Blades empty - initiating refill sequence")
+                
                 tryRefill()
                 wait(2)
                 
                 -- If blades are still empty after refill attempt
                 if isBladeEmpty() then
-                    log("Blades still empty after refill attempt - waiting before retrying")
+                    
                     wait(5)
                     continue
                 end
                 
-                log("Blades refilled - continuing with titan hunting")
+                
             end
 
             -- Step 2: find & expand
             local titans = getTitans()
             if #titans == 0 then
-                log("No Titans found—waiting…")
+                
                 wait(1.5) -- Reduced wait time
                 continue
             end
@@ -550,11 +541,11 @@ SafeAutoExec:Queue(function()
             -- Step 3: hover and sweep-attack each
             local needsRefill = false
             for i, t in ipairs(titans) do
-                log(("Attacking %d/%d: %s"):format(i, #titans, t.mdl.Name))
+                
                 
                 -- IMPORTANT FIX #1: Check blades before starting a new titan
                 if isBladeEmpty() then
-                    log("DETECTED EMPTY BLADES BEFORE ATTACK - BREAKING TO REFILL")
+                    
                     needsRefill = true
                     break
                 end
@@ -577,7 +568,7 @@ SafeAutoExec:Queue(function()
                 
                 -- IMPORTANT FIX #1: Check if we stopped due to empty blades
                 if bladesEmptied or isBladeEmpty() then
-                    log("BLADES EMPTIED DURING ATTACK - BREAKING LOOP TO REFILL")
+                    
                     needsRefill = true
                     break
                 end
@@ -588,14 +579,14 @@ SafeAutoExec:Queue(function()
 
             -- If we need to refill, skip the wait and immediately go to start of loop
             if needsRefill then
-                log("Blade refill needed - skipping wait and proceeding to refill")
+                
                 continue
             end
 
-            log("Cycle complete—restarting")
+            
             wait(math.random(500, 1500) / 1000) -- Randomized wait time (0.5-1.5s)
         end
     end)
 
-    log("Holy-sweeper Titan killer loaded and improved")
+    
 end)

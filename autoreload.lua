@@ -4,9 +4,7 @@ local SafeAutoExec = {}
 
 function SafeAutoExec:Queue(scriptFunction)
     task.spawn(function()
-             print("[SafeAutoExec] Waiting before starting execution...")
         task.wait(15)
-        print("[SafeAutoExec] Starting execution sequence...")
         -- Step 1: Wait for game to fully load
         if not game:IsLoaded() then
             game.Loaded:Wait()
@@ -34,7 +32,6 @@ function SafeAutoExec:Queue(scriptFunction)
         -- Step 6: Execute the actual script function
         local success, err = pcall(scriptFunction)
         if not success then
-            warn("[SafeAutoExec] Script execution failed: " .. tostring(err))
         end
     end)
     

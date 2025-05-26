@@ -4,9 +4,7 @@ local SafeAutoExec = {}
 
 function SafeAutoExec:Queue(scriptFunction)
     task.spawn(function()
-             print("[SafeAutoExec] Waiting before starting execution...")
         task.wait(15)
-        print("[SafeAutoExec] Starting execution sequence...")
         -- Step 1: Wait for game to fully load
         if not game:IsLoaded() then
             game.Loaded:Wait()
@@ -34,7 +32,6 @@ function SafeAutoExec:Queue(scriptFunction)
         -- Step 6: Execute the actual script function
         local success, err = pcall(scriptFunction)
         if not success then
-            warn("[SafeAutoExec] Script execution failed: " .. tostring(err))
         end
     end)
     
@@ -65,7 +62,6 @@ SafeAutoExec:Queue(function()
 
     local function debug(message)
         if DEBUG_MODE then
-            print("[RetryClicker] " .. message)
         end
     end
 
@@ -82,7 +78,6 @@ SafeAutoExec:Queue(function()
 
     local function simulateTap(x, y)
         if PLATFORM == "Mobile" then
-            debug("Mobile tap at " .. x .. ", " .. y)
             VirtualInputManager:SendTouchEvent(0, Vector2.new(x, y), true)
             task.wait(0.05)
             VirtualInputManager:SendTouchEvent(0, Vector2.new(x, y), false)
@@ -98,17 +93,14 @@ SafeAutoExec:Queue(function()
         
         local retryButton = getRetryButton()
         if not retryButton then
-            debug("Retry button not found")
             return
         end
 
         if not retryButton.Visible then
-            debug("Retry button hidden")
             return
         end
 
         lastClickTime = tick()
-        debug("Attempting to click Retry button")
 
         -- Get click position with GUI inset
         local inset = GuiService:GetGuiInset()
@@ -161,13 +153,11 @@ SafeAutoExec:Queue(function()
         pcall(function()
             firesignal(retryButton.Activated)
             firesignal(retryButton.MouseButton1Click)
-            debug("Signals fired successfully")
         end)
     end
 
     -- Main loop
     local endTime = tick() + (RUNTIME_MINUTES * 60)
-    debug("Retry clicker activated ("..RUNTIME_MINUTES.."m runtime)")
 
     spawn(function()
         while isRunning and tick() < endTime do
@@ -177,18 +167,15 @@ SafeAutoExec:Queue(function()
                 task.wait(0.1)
             end
         end
-        debug("Script completed")
         isScriptActive = false
     end)
 
     -- Cleanup handlers
     UserInputService.WindowFocusReleased:Connect(function()
         isRunning = false
-        debug("Window focus lost - stopping")
     end)
 
     player.CharacterAdded:Connect(function()
-        debug("Player respawn detected")
         clickRetry()  -- Extra click attempt on respawn
     end)
     end
